@@ -1,7 +1,7 @@
 {
-  "name": "Task Logger for Akari",
-  "short_name": "TaskLogger",
-  "description": "タスク・スケジュール・出退勤を一元化するコックピット",
+  "name": "aki-Cockpit",
+  "short_name": "aki-Cockpit",
+  "description": "タスク・スケジュール・出退勤を一元化するパーソナルコックピット",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",

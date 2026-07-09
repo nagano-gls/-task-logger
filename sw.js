@@ -1,5 +1,5 @@
-// Task Logger PWA Service Worker — ネットワーク優先＋キャッシュフォールバック
-const CACHE = 'task-logger-v0.7.0';
+// aki-Cockpit PWA Service Worker — ネットワーク優先＋キャッシュフォールバック
+const CACHE = 'aki-cockpit-v1.0.0';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

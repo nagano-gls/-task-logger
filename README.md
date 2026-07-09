@@ -1,12 +1,16 @@
-# Task Logger for Akari v0.7.0
+# aki-Cockpit v1.0.0
 
-タスク・スケジュール・出退勤を一元化する「コックピット」アプリ。
+タスク・スケジュール・出退勤を一元化するパーソナル「コックピット」アプリ。
 1ファイルのHTML（`index.html`）で動作し、データはブラウザのlocalStorageに保存されます。
+（旧名: Task Logger v0.6.6 からの後継。データ形式は互換で、同じブラウザなら既存データを引き継ぎます）
 
-## v0.7.0 の変更点（v0.6.6 → v0.7.0）
+リリース履歴は `aki-Cockpit_Release-Notes_v1.0.0.xlsx` を参照。
+
+## v1.0.0 の変更点（Task Logger v0.6.6 → aki-Cockpit v1.0.0）
 
 | 機能 | 内容 |
 |---|---|
+| 🏷️ 名称変更 | 「Task Logger for Akari」→「aki-Cockpit」に改称し、v1.0.0に |
 | 🔗 リンク集の常時表示 | 右下のフローティングボタン（クリックで開閉）を廃止し、タブ直下に**リンクバーとして常時表示**。設定タブの「リンク集」で登録したリンクがそのまま一覧表示されます |
 | 🗓️ Outlook予定表 連携 | 新しい「予定」タブに今日〜2週間の予定を表示。タスクタブ上部にも「今日の予定」を表示。繰り返し予定（毎日/毎週/毎月）・例外・キャンセルにも対応 |
 | 🕐 freee勤怠打刻 連携 | 出勤・退勤ボタンを押すと**freeeの打刻ページを自動で新しいタブで開く**（設定でON/OFF）。ヘッダーの「🕐 打刻」ボタンからもいつでも開けます |
@@ -14,16 +18,9 @@
 
 ## GitHub Pages で公開する手順
 
-1. GitHubで新しいリポジトリを作成（例: `task-logger`）
-   - **注意**: 無料プランでGitHub Pagesを使う場合、リポジトリはPublicにする必要があります。アプリのコード自体にタスクや個人データは含まれません（データは各端末のブラウザ内のみ）が、Outlook ICSはActionsのSecretに登録し、リポジトリに直接書かないでください。
-2. このフォルダをpush:
-   ```
-   git remote add origin https://github.com/<ユーザー名>/task-logger.git
-   git push -u origin main
-   ```
-3. リポジトリの **Settings → Pages → Source: Deploy from a branch → main / (root)** を選択
-4. 数分後 `https://<ユーザー名>.github.io/task-logger/` でアクセス可能
-5. スマホ/タブレットでそのURLを開き、「ホーム画面に追加」でアプリとして利用
+1. リポジトリの **Settings → Pages → Source: Deploy from a branch → main / (root)** を選択
+2. 数分後 `https://<ユーザー名>.github.io/<リポジトリ名>/` でアクセス可能
+3. スマホ/タブレットでそのURLを開き、「ホーム画面に追加」でアプリとして利用
 
 ## Outlook予定表 連携のセットアップ
 
@@ -53,10 +50,11 @@ freee側のセキュリティ仕様上、外部アプリからの自動打刻は
 ## ファイル構成
 
 ```
-index.html                          アプリ本体（1ファイル完結）
-manifest.webmanifest                PWAマニフェスト
-sw.js                               Service Worker（オフラインキャッシュ）
-icon-192.png / icon-512.png         アプリアイコン
-.github/workflows/fetch-calendar.yml  Outlook ICS定期取得（30分ごと）
-calendar/outlook.ics                Actionsが生成する予定データ（自動更新）
+index.html                             アプリ本体（1ファイル完結）
+manifest.webmanifest                   PWAマニフェスト
+sw.js                                  Service Worker（オフラインキャッシュ）
+icon-192.png / icon-512.png            アプリアイコン
+aki-Cockpit_Release-Notes_v1.0.0.xlsx  リリースノート（全履歴）
+.github/workflows/fetch-calendar.yml   Outlook ICS定期取得（30分ごと）
+calendar/outlook.ics                   Actionsが生成する予定データ（自動更新）
 ```

@@ -6,10 +6,10 @@
 <meta name="theme-color" content="#1A1A2E"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
-<meta name="apple-mobile-web-app-title" content="Task Logger"/>
+<meta name="apple-mobile-web-app-title" content="aki-Cockpit"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
-<title>Task Logger for Akari v0.7.0</title>
+<title>aki-Cockpit v1.0.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#F8F7F4;font-family:'Hiragino Sans','Noto Sans JP',sans-serif;min-height:100vh;padding-bottom:60px}
@@ -254,7 +254,7 @@ input.inp:focus{border-color:#5A5FBE;box-shadow:0 0 0 2px rgba(90,95,190,.12)}
 </head>
 <body>
 <div class="hdr">
-  <span class="hdr-title">タスク管理・業務記録&nbsp;&nbsp;<span class="ver" style="font-size:13px;opacity:.7;font-weight:400">Task Logger for Akari v0.7.0</span></span>
+  <span class="hdr-title">タスク管理・業務記録&nbsp;&nbsp;<span class="ver" style="font-size:13px;opacity:.7;font-weight:400">aki-Cockpit v1.0.0</span></span>
   <div class="hdr-right">
     <span id="dlbl" style="font-size:11px;color:#AAA"></span>
     <button class="btn-attend" id="btn-freee" onclick="openFreee()" title="freee打刻ページを開く" style="background:#2864F0;color:#fff">🕐 打刻</button>
@@ -1794,7 +1794,7 @@ function _mdCell(v){
 async function saveCSVToFolder(auto){
   const isDuty=!!attend._projectDuty;
   const headerCols=['タイムスタンプ','タスク名','ステータス','着手時刻','完了時刻','所要時間(分)','ユーザーメモ','システムログ','AI活用','AIメモ'];
-  let md=`# Task Logger 業務記録 - ${todayKey()}\n\n`;
+  let md=`# aki-Cockpit 業務記録 - ${todayKey()}\n\n`;
   md+=`- 出勤: ${attend.inTime||''}\n- 退勤: ${attend.outTime||''}\n`;
   if(isDuty){
     md+=`\n> ⚠️ **本日は案件稼働日です。** すべてのタスクは案件対応の裏で並行して行われているため、以下の所要時間は正確な作業時間の記録として利用できません。\n`;
@@ -1810,7 +1810,7 @@ async function saveCSVToFolder(auto){
     ];
     md+=`| ${row.map(_mdCell).join(' | ')} |\n`;
   });
-  const fileName=`Task-Logger_${todayKey()}${auto?'_退勤':''}.md`;
+  const fileName=`aki-Cockpit_${todayKey()}${auto?'_退勤':''}.md`;
   if(window._saveDirHandle){
     try{
       const fh=await window._saveDirHandle.getFileHandle(fileName,{create:true});
@@ -3027,7 +3027,7 @@ function exportPastRecCSV(){
   const allRecs=ld('tlH4-records',{});
   const allAttend=ld(AKEY,{});
   const headerCols=['タイムスタンプ','タスク名','ステータス','着手時刻','完了時刻','所要時間(分)','ユーザーメモ','システムログ','AI活用'];
-  let md=`# Task Logger 業務記録（過去分）\n\n`;
+  let md=`# aki-Cockpit 業務記録（過去分）\n\n`;
   checked.sort().forEach(date=>{
     const recs=allRecs[date]||[];
     const isDuty=!!(allAttend[date]&&allAttend[date]._projectDuty);
@@ -3054,7 +3054,7 @@ function exportPastRecCSV(){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const label=checked.length===1?checked[0]:checked[0]+'_'+checked[checked.length-1];
-  a.href=url; a.download=`TaskLogger_${label}.md`; a.click();
+  a.href=url; a.download=`aki-Cockpit_過去記録_${label}.md`; a.click();
   URL.revokeObjectURL(url);
 }
 
@@ -3879,7 +3879,7 @@ function copyForReview(){
   const recLines=recs.map(r=>'['+timeOnly(r.timestamp)+'] '+r.taskName+(r.userMemo?': '+r.userMemo:'')).join('\n');
   const attLine=attend.inTime?'出勤: '+timeOnly(attend.inTime)+(attend.outTime?' / 退勤: '+timeOnly(attend.outTime):''):'';
   const text=[
-    '# Task Logger 業務記録 - '+todayKey(),
+    '# aki-Cockpit 業務記録 - '+todayKey(),
     attLine,
     '',
     '## 完了タスク ('+done.length+'件)',
@@ -3908,7 +3908,7 @@ function copyForReschedule(){
   const rescLines=resc.map(t=>'・'+t.name+(t.rescheduleDate?' ['+t.rescheduleDate+']':'')).join('\n');
   const attLine=attend.plannedOutTime?'退勤予定: '+attend.plannedOutTime:'';
   const text=[
-    '# Task Logger リスケ提案依頼 - '+todayKey(),
+    '# aki-Cockpit リスケ提案依頼 - '+todayKey(),
     attLine,
     '',
     '## 本日の未完了タスク ('+active.length+'件)',
@@ -4068,7 +4068,7 @@ function calcDur(s,e){const d=Math.round((new Date(e.replace(' ','T'))-new Date(
 function downloadCSV(auto){
   const isDuty=!!attend._projectDuty;
   const headerCols=['タイムスタンプ','タスク名','ステータス','着手時刻','完了時刻','所要時間(分)','ユーザーメモ','システムログ','AI活用','AIメモ'];
-  let md=`# Task Logger 業務記録 - ${todayKey()}\n\n`;
+  let md=`# aki-Cockpit 業務記録 - ${todayKey()}\n\n`;
   md+=`- 出勤: ${attend.inTime||''}\n- 退勤: ${attend.outTime||''}\n`;
   if(isDuty){
     md+=`\n> ⚠️ **本日は案件稼働日です。** すべてのタスクは案件対応の裏で並行して行われているため、以下の所要時間は正確な作業時間の記録として利用できません。\n`;
@@ -4085,7 +4085,7 @@ function downloadCSV(auto){
     md+=`| ${row.map(_mdCell).join(' | ')} |\n`;
   });
   const url=URL.createObjectURL(new Blob([md],{type:'text/markdown;charset=utf-8;'}));
-  Object.assign(document.createElement('a'),{href:url,download:`Task-Logger_${todayKey()}${auto?'_退勤':''}.md`}).click();
+  Object.assign(document.createElement('a'),{href:url,download:`aki-Cockpit_${todayKey()}${auto?'_退勤':''}.md`}).click();
   URL.revokeObjectURL(url);
 }
 
@@ -4200,7 +4200,7 @@ function toggleGroupVoice(gi){
 // ── データのエクスポート/インポート（全データをJSON1ファイルで）
 function exportAllData(silent){
   const allData={
-    version:'v0.7.0',
+    version:'v1.0.0',
     exportedAt:getJST(),
     tasks:ld(TKEY,[]),
     records:ld(RKEY,{}),
@@ -4219,7 +4219,7 @@ function exportAllData(silent){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download='TaskLogger_backup_'+todayKey()+'.json';
+  a.download='aki-Cockpit_backup_'+todayKey()+'.json';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   URL.revokeObjectURL(url);
   if(!silent)alert('データをエクスポートしました。\nBox等に保存しておくと安心です。');
@@ -4293,7 +4293,7 @@ function deleteAiLink(id){
 function openAiLink(url){
   window.open(url,'_blank','noopener');
 }
-// （v0.7.0）右下フローティングボタンは廃止 → リンクバーで常時表示（renderLinkBar）
+// （v1.0.0）右下フローティングボタンは廃止 → リンクバーで常時表示（renderLinkBar）
 
 
 // ── タスクの期日設定
