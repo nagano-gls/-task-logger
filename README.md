@@ -1,10 +1,10 @@
-# aki-Cockpit v1.0.0
+# aki-Cockpit v1.0.1
 
 タスク・スケジュール・出退勤を一元化するパーソナル「コックピット」アプリ。
 1ファイルのHTML（`index.html`）で動作し、データはブラウザのlocalStorageに保存されます。
 （旧名: Task Logger v0.6.6 からの後継。データ形式は互換で、同じブラウザなら既存データを引き継ぎます）
 
-リリース履歴は `aki-Cockpit_Release-Notes_v1.0.0.xlsx` を参照。
+リリース履歴は `aki-Cockpit_Release-Notes_v1.0.1.xlsx` を参照。
 
 ## v1.0.0 の変更点（Task Logger v0.6.6 → aki-Cockpit v1.0.0）
 
@@ -24,16 +24,16 @@
 
 ## Outlook予定表 連携のセットアップ
 
-1. [Outlook on the web](https://outlook.office.com/calendar/) を開く
-2. **設定（⚙）→ 予定表 → 共有予定表 → 予定表の公開** で予定表を選び、「すべての詳細を閲覧できる」で公開 → **ICSリンク**をコピー
-3. 連携方法は2通り（両方設定すると確実）:
-   - **アプリに直接登録**: アプリの設定タブ「Outlook予定表 連携」にICSリンクを貼り付け → ブラウザによってはCORS制限で取得できない場合あり
-   - **GitHub Actions経由（推奨・確実）**: リポジトリの **Settings → Secrets and variables → Actions → New repository secret** で
-     - Name: `OUTLOOK_ICS_URL`
-     - Secret: コピーしたICSリンク
-     を登録。`.github/workflows/fetch-calendar.yml` が30分ごとにICSを取得して `calendar/outlook.ics` に保存し、アプリが自動でそれを読み込みます。
-     初回はリポジトリの **Actions → Fetch Outlook Calendar → Run workflow** で手動実行すると即反映されます。
-4. 会社のポリシーで予定表の公開が無効化されている場合は、Outlookから予定表を`.ics`エクスポートして、設定タブの「.icsファイルを読み込む」で手動読み込みも可能です。
+**標準運用（.icsファイルの手動読み込み）** — 会社ポリシーで「予定表の公開」が使えない環境向け:
+
+1. デスクトップ版Outlookで予定表を開く
+2. **ファイル → 予定表の保存** → 「その他のオプション」で **期間: 今後2週間程度／詳細: 完全な詳細** を選んで.icsファイルを保存
+3. アプリの「予定」タブの **「📂 .ics読み込み」** ボタンから読み込む（設定タブからも可）
+4. 予定が変わったら同じ手順で再読み込み。データが24時間以上古くなるとアプリが注意表示を出します
+
+**（参考）自動取得** — 「予定表の公開」が許可されているテナントの場合のみ:
+- Outlook on the webの **設定 → 予定表 → 共有予定表 → 予定表の公開** でICSリンクを発行し、リポジトリのSecret `OUTLOOK_ICS_URL` に登録
+- `.github/workflows/fetch-calendar.yml` の `schedule:` のコメントを外すと30分ごとの自動取得が再開します（現在は手動実行のみに停止中）
 
 ## freee勤怠打刻 連携について
 

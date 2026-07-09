@@ -6,9 +6,11 @@
 #   名前: OUTLOOK_ICS_URL / 値: Outlookの「予定表の公開」で発行したICSリンク を登録してください。
 name: Fetch Outlook Calendar
 on:
-  schedule:
-    - cron: '*/30 * * * *'   # 30分ごと
-  workflow_dispatch:          # 手動実行も可能
+  # 会社ポリシーで「予定表の公開」が使えないため定期実行は停止中（.ics手動読み込み運用）。
+  # 公開ICS URLが使えるようになったら、下の2行のコメントを外して再有効化してください。
+  # schedule:
+  #   - cron: '*/30 * * * *'   # 30分ごと
+  workflow_dispatch:          # 手動実行のみ
 permissions:
   contents: write
 concurrency:
