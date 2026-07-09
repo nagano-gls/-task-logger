@@ -1,16 +1,23 @@
-# Outlook公開カレンダー(ICS)を定期取得して calendar/outlook.ics に保存するワークフロー。
+# 公開ICSカレンダーを定期取得して calendar/ に保存するワークフロー。
 # ブラウザから直接ICSを取得するとCORSでブロックされるため、GitHub Actionsが代理取得します。
 #
-# セットアップ:
+# セットアップ（複数カレンダー対応）:
 #   リポジトリの Settings → Secrets and variables → Actions → New repository secret で
-#   名前: OUTLOOK_ICS_URL / 値: Outlookの「予定表の公開」で発行したICSリンク を登録してください。
-name: Fetch Outlook Calendar
+#   名前: ICS_SOURCES
+#   値:   1行1カレンダーで「表示名|ICSのURL」形式。例:
+#         スタジオ予約|https://gmo-onair.jp/api/v1/internal/studios/calendar.ics?token=xxxx
+#         Outlook|https://outlook.office365.com/owa/calendar/xxxx/calendar.ics
+#   を登録してください。（旧形式の OUTLOOK_ICS_URL も引き続き利用可）
+#
+# ⚠️ 注意: このリポジトリがPublicの場合、保存された calendar/*.ics（予定の内容）も
+#          誰でも閲覧できる状態になります。社内予定を扱う場合はリポジトリのPrivate化
+#          （GitHub Pro等が必要）を検討してから schedule を有効化してください。
+name: Fetch Calendars
 on:
-  # 会社ポリシーで「予定表の公開」が使えないため定期実行は停止中（.ics手動読み込み運用）。
-  # 公開ICS URLが使えるようになったら、下の2行のコメントを外して再有効化してください。
+  # 定期実行は停止中。運用方針が決まったら下の2行のコメントを外して有効化してください。
   # schedule:
   #   - cron: '*/30 * * * *'   # 30分ごと
-  workflow_dispatch:          # 手動実行のみ
+  workflow_dispatch:          # 手動実行
 permissions:
   contents: write
 concurrency:
@@ -21,24 +28,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch ICS
+      - name: Fetch ICS sources
         env:
-          ICS_URL: ${{ secrets.OUTLOOK_ICS_URL }}
+          ICS_SOURCES: ${{ secrets.ICS_SOURCES }}
+          OUTLOOK_ICS_URL: ${{ secrets.OUTLOOK_ICS_URL }}
         run: |
-          if [ -z "$ICS_URL" ]; then
-            echo "::warning::Secret OUTLOOK_ICS_URL が未設定です。README の手順で登録してください。"
+          SRC="${ICS_SOURCES:-}"
+          if [ -z "$SRC" ] && [ -n "${OUTLOOK_ICS_URL:-}" ]; then
+            SRC="Outlook|$OUTLOOK_ICS_URL"
+          fi
+          if [ -z "$SRC" ]; then
+            echo "::warning::Secret ICS_SOURCES が未設定です。README の手順で登録してください。"
             exit 0
           fi
           mkdir -p calendar
-          curl -fsSL --retry 3 "$ICS_URL" -o calendar/outlook.ics
+          rm -f calendar/src-*.ics calendar/outlook.ics
+          i=0
+          json="["
+          while IFS='|' read -r name url; do
+            name="$(echo "$name" | xargs)"
+            [ -z "$name" ] && continue
+            [ -z "$url" ] && continue
+            i=$((i+1))
+            f="src-$i.ics"
+            echo "fetching [$name] -> calendar/$f"
+            curl -fsSL --retry 3 "$url" -o "calendar/$f"
+            [ $i -gt 1 ] && json="$json,"
+            json="$json{\"name\":\"$name\",\"file\":\"$f\"}"
+          done <<< "$SRC"
+          json="$json]"
+          echo "$json" > calendar/sources.json
+          cat calendar/sources.json
       - name: Commit if changed
         run: |
           git config user.name  "calendar-bot"
           git config user.email "actions@github.com"
-          git add calendar/outlook.ics || true
+          git add -A calendar || true
           if git diff --cached --quiet; then
             echo "変更なし"
           else
-            git commit -m "chore: update outlook calendar [skip ci]"
+            git commit -m "chore: update calendars [skip ci]"
             git push
           fi

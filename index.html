@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="aki-Cockpit"/>
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
-<title>aki-Cockpit v1.0.1</title>
+<title>aki-Cockpit v1.1.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#F8F7F4;font-family:'Hiragino Sans','Noto Sans JP',sans-serif;min-height:100vh;padding-bottom:60px}
@@ -228,6 +228,7 @@ input.inp:focus{border-color:#5A5FBE;box-shadow:0 0 0 2px rgba(90,95,190,.12)}
 .cal-allday-badge{font-size:9px;background:#EFF6FF;color:#0369A1;border:1px solid #BAE6FD;border-radius:8px;padding:1px 6px;font-weight:600;white-space:nowrap}
 .cal-status{font-size:11px;color:#888;background:#F8F7F4;border:1px solid #E5E2DA;border-radius:6px;padding:6px 10px;margin-bottom:8px;line-height:1.6}
 .cal-status.err{background:#FFF8EC;border-color:#F5D38A;color:#B46B00}
+.cal-src-badge{display:inline-block;font-size:9px;font-weight:600;border:1px solid;border-radius:8px;padding:0 6px;margin-left:5px;white-space:nowrap;vertical-align:1px}
 /* 今日の予定ストリップ（タスクタブ上部） */
 .today-events-box{background:#EFF6FF;border:1px solid #BAE6FD;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:12px}
 .today-events-box .te-title{font-size:11px;font-weight:600;color:#0369A1;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
@@ -254,7 +255,7 @@ input.inp:focus{border-color:#5A5FBE;box-shadow:0 0 0 2px rgba(90,95,190,.12)}
 </head>
 <body>
 <div class="hdr">
-  <span class="hdr-title">タスク管理・業務記録&nbsp;&nbsp;<span class="ver" style="font-size:13px;opacity:.7;font-weight:400">aki-Cockpit v1.0.1</span></span>
+  <span class="hdr-title">タスク管理・業務記録&nbsp;&nbsp;<span class="ver" style="font-size:13px;opacity:.7;font-weight:400">aki-Cockpit v1.1.0</span></span>
   <div class="hdr-right">
     <span id="dlbl" style="font-size:11px;color:#AAA"></span>
     <button class="btn-attend" id="btn-freee" onclick="openFreee()" title="freee打刻ページを開く" style="background:#2864F0;color:#fff">🕐 打刻</button>
@@ -479,6 +480,7 @@ function init(){
   records.forEach(r=>{if(!taskStartTime[r.taskId])taskStartTime[r.taskId]=r.timestamp;});
   prefs=Object.assign({freeeAuto:true,freeeUrl:FREEE_DEFAULT_URL,icsUrl:''},ld(PREFKEY,{}));
   _calCache=ld(CALKEY,null);
+  migrateCalCache(); // 旧形式（単一カレンダー）→ 複数カレンダー形式へ移行
   updateAttendButtons();renderTasks();updateBadge();
   renderLinkBar();
   // カレンダー：URL設定済みかつキャッシュが30分以上古ければ自動更新
@@ -4200,7 +4202,7 @@ function toggleGroupVoice(gi){
 // ── データのエクスポート/インポート（全データをJSON1ファイルで）
 function exportAllData(silent){
   const allData={
-    version:'v1.0.1',
+    version:'v1.1.0',
     exportedAt:getJST(),
     tasks:ld(TKEY,[]),
     records:ld(RKEY,{}),
@@ -4414,7 +4416,8 @@ function renderSettings(){
       <label class="btn-s" style="cursor:pointer;display:inline-block;background:#EEF0FF;color:#5A5FBE;border-color:#C8C5F0;font-weight:600">📂 .icsファイルを読み込む
         <input type="file" accept=".ics,text/calendar" style="display:none" onchange="importICSFile(this)">
       </label>
-      <div id="ics-status" style="font-size:11px;color:#5A5FBE;margin-top:8px">${_calCache?`✅ ${_calCache.events.length}件の予定を取得済み（${esc(_calCache.source||'')}）`:'未取得'}</div>
+      <div id="ics-status" style="font-size:11px;color:#5A5FBE;margin-top:8px;line-height:1.8">${_calSummaryText()}</div>
+      <p style="font-size:11px;color:#888;margin-top:8px">💡 複数の.icsファイル（例：Outlook個人予定＋GMO ONAiRスタジオ予約）を読み込むと、1つの予定表にまとめて色分け表示されます。同じファイル名を再読み込みすると上書き更新されます。</p>
       <p style="font-size:11px;color:#AAA;margin:12px 0 6px">
         （参考）会社ポリシーで「予定表の公開」が許可されている場合のみ：公開ICSリンクを登録すると自動取得できます。
       </p>
@@ -4967,54 +4970,100 @@ function expandICSEvents(raws,winStart,winEnd){
   return out;
 }
 
-// カレンダー取得：①設定のICS URL直接 → ②同一オリジンのcalendar/outlook.ics（GitHub Actionsが定期取得）
+// ── 複数カレンダー対応（v1.1.0）
+// _calCache={fetchedAt,calendars:{id:{name,events,updatedAt}}}
+//   id: 'url'（設定のICS URL直接） / 'gh:<file>'（GitHub Actions取得分） / 'manual:<名前>'（手動読み込み分）
+function _parseAndExpand(text){
+  const raws=parseICS(text);
+  const winStart=jstTodayStartMs(),winEnd=winStart+15*86400000-1;
+  return expandICSEvents(raws,winStart,winEnd);
+}
+function _calDirty(){
+  sv(CALKEY,_calCache);
+  renderCalendar();
+  renderTasks(); // 今日の予定ストリップ更新
+}
+// 旧形式キャッシュ（{events:[...]}）からの移行
+function migrateCalCache(){
+  if(_calCache&&_calCache.events&&!_calCache.calendars){
+    _calCache={fetchedAt:_calCache.fetchedAt||Date.now(),
+      calendars:{'manual:旧データ':{name:_calCache.source||'予定',events:_calCache.events,updatedAt:_calCache.fetchedAt||Date.now()}}};
+    sv(CALKEY,_calCache);
+  }
+}
+// 全カレンダーの予定をマージ（各予定に _cal:カレンダー名 / _ci:色番号 を付与）
+function _allEvents(){
+  if(!_calCache||!_calCache.calendars)return null;
+  const ids=Object.keys(_calCache.calendars);
+  if(!ids.length)return null;
+  const out=[];
+  ids.forEach((id,i)=>{
+    const c=_calCache.calendars[id];
+    (c.events||[]).forEach(ev=>out.push(Object.assign({},ev,{_cal:c.name,_ci:i})));
+  });
+  out.sort((a,b)=>a.start-b.start||(a.allDay?-1:1));
+  return out;
+}
+const CAL_COLORS=['#5A5FBE','#0369A1','#22A06B','#B46B00','#8B5CF6','#E05A5A'];
+
+// カレンダー取得：①設定のICS URL直接 → ②GitHub Actions取得分（calendar/sources.json → 複数.ics）
 async function fetchCalendarNow(manual){
   if(_calFetching)return;
   _calFetching=true;
   _setCalStatus('🔄 予定を取得中…');
-  let text=null,source='',errNote='';
+  const cals=(_calCache&&_calCache.calendars)?Object.assign({},_calCache.calendars):{};
+  let updated=0,errNote='';
   if(prefs.icsUrl){
     try{
       const r=await fetch(prefs.icsUrl,{cache:'no-store'});
-      if(r.ok){text=await r.text();source='Outlook公開URLから直接取得';}
+      if(r.ok){cals['url']={name:'Outlook',events:_parseAndExpand(await r.text()),updatedAt:Date.now()};updated++;}
       else errNote=`URL取得エラー (HTTP ${r.status})`;
     }catch(e){errNote='URL直接取得はブラウザのCORS制限でブロックされました';}
   }
-  if(!text&&location.protocol.startsWith('http')){
+  if(location.protocol.startsWith('http')){
     try{
-      const r=await fetch('calendar/outlook.ics?t='+Date.now(),{cache:'no-store'});
-      if(r.ok){text=await r.text();source='GitHub Actions経由（30分ごと自動更新）';}
+      const r=await fetch('calendar/sources.json?t='+Date.now(),{cache:'no-store'});
+      if(r.ok){
+        const srcs=await r.json();
+        // sources.jsonから消えたソースはキャッシュからも削除
+        Object.keys(cals).filter(k=>k.startsWith('gh:')&&!srcs.find(s=>'gh:'+s.file===k)).forEach(k=>delete cals[k]);
+        for(const s of srcs){
+          try{
+            const rr=await fetch('calendar/'+s.file+'?t='+Date.now(),{cache:'no-store'});
+            if(rr.ok){cals['gh:'+s.file]={name:s.name,events:_parseAndExpand(await rr.text()),updatedAt:Date.now()};updated++;}
+          }catch(e){}
+        }
+      }else{
+        // 旧形式（単一 calendar/outlook.ics）
+        const rr=await fetch('calendar/outlook.ics?t='+Date.now(),{cache:'no-store'});
+        if(rr.ok){cals['gh:outlook.ics']={name:'Outlook',events:_parseAndExpand(await rr.text()),updatedAt:Date.now()};updated++;}
+      }
     }catch(e){}
   }
   _calFetching=false;
-  if(!text){
-    // 自動取得が使えない環境（予定表の公開が無効など）では.ics手動読み込みが標準運用。
-    // 読み込み済みキャッシュがあるならエラーは出さず、古さの注意はrenderCalendar側で表示する。
-    if(_calCache&&_calCache.events){
-      _setCalStatus('');
-      if(manual)_setCalStatus('ℹ️ 自動取得はできませんでした（この環境では「📂 .ics読み込み」での手動更新が標準です）。前回読み込んだ予定を表示しています。');
+  if(updated>0){
+    _calCache={fetchedAt:Date.now(),calendars:cals};
+    _setCalStatus('');
+    _calDirty();
+  }else{
+    if(_allEvents()){
+      _setCalStatus(manual?'ℹ️ 自動取得はできませんでした（この環境では「📂 .ics読み込み」での手動更新が標準です）。前回読み込んだ予定を表示しています。':'');
     }else{
-      const msg=prefs.icsUrl
-        ?`⚠️ 予定を取得できませんでした。${errNote}<br>「📂 .ics読み込み」ボタンから、Outlookで保存した.icsファイルを読み込んでください。`
-        :'⚠️ 予定が未読み込みです。「📂 .ics読み込み」ボタンから、Outlookで保存した.icsファイルを読み込んでください。';
-      _setCalStatus(msg,true);
+      _setCalStatus(`⚠️ 予定が未読み込みです。「📂 .ics読み込み」ボタンから.icsファイルを読み込んでください。${errNote?'<br>'+errNote:''}`,true);
     }
     if(manual)renderCalendar();
-    return;
   }
-  _applyICSText(text,source);
 }
-function _applyICSText(text,source){
+// 手動読み込み：ファイル名ごとに別カレンダーとして保持（同名ファイルの再読み込みで上書き＝複数カレンダー併用可）
+function _applyICSText(text,source,fname){
   try{
-    const raws=parseICS(text);
-    const winStart=jstTodayStartMs(),winEnd=winStart+15*86400000-1;
-    const events=expandICSEvents(raws,winStart,winEnd);
-    _calCache={fetchedAt:Date.now(),source,events};
-    sv(CALKEY,_calCache);
-    // 手動読み込み時は件数を明示（読み込めた実感が持てるように）
-    _setCalStatus(source.includes('.ics')?`✅ ${events.length}件の予定を読み込みました`:'');
-    renderCalendar();
-    renderTasks(); // 今日の予定ストリップ更新
+    const events=_parseAndExpand(text);
+    const name=(fname||'手動読み込み').replace(/\.ics$/i,'');
+    if(!_calCache||!_calCache.calendars)_calCache={fetchedAt:Date.now(),calendars:{}};
+    _calCache.calendars['manual:'+name]={name,events,updatedAt:Date.now()};
+    _calCache.fetchedAt=Date.now();
+    _setCalStatus(`✅ 「${esc(name)}」${events.length}件の予定を読み込みました`);
+    _calDirty();
   }catch(e){
     _setCalStatus('⚠️ ICSの解析に失敗しました: '+e.message,true);
   }
@@ -5022,9 +5071,17 @@ function _applyICSText(text,source){
 function importICSFile(input){
   const f=input.files&&input.files[0];if(!f)return;
   const rd=new FileReader();
-  rd.onload=()=>_applyICSText(String(rd.result),'.icsファイルから読み込み');
+  rd.onload=()=>_applyICSText(String(rd.result),'.icsファイルから読み込み',f.name);
   rd.readAsText(f);
   input.value='';
+}
+// 手動読み込み分をすべて削除
+function clearManualCalendars(){
+  if(!_calCache||!_calCache.calendars)return;
+  if(!confirm('手動で読み込んだカレンダーをすべて削除しますか？'))return;
+  Object.keys(_calCache.calendars).filter(k=>k.startsWith('manual:')).forEach(k=>delete _calCache.calendars[k]);
+  _setCalStatus('');
+  _calDirty();
 }
 let _calStatusMsg='',_calStatusErr=false;
 function _setCalStatus(msg,isErr){
@@ -5032,7 +5089,7 @@ function _setCalStatus(msg,isErr){
   const el=document.getElementById('cal-status');
   if(el){el.innerHTML=msg;el.style.display=msg?'':'none';el.classList.toggle('err',!!isErr);}
   const el2=document.getElementById('ics-status');
-  if(el2){el2.innerHTML=msg||(_calCache?`✅ ${_calCache.events.length}件の予定を取得済み（${_calCache.source}）`:'');}
+  if(el2){el2.innerHTML=msg||_calSummaryText();}
 }
 function saveIcsUrl(){
   const inp=document.getElementById('ics-url-input');if(!inp)return;
@@ -5040,43 +5097,58 @@ function saveIcsUrl(){
   if(prefs.icsUrl)fetchCalendarNow(true);
 }
 
+// カレンダーごとの取得状況サマリ（設定タブ・予定タブ共用）
+function _calSummaryText(){
+  if(!_calCache||!_calCache.calendars)return '未取得';
+  const ids=Object.keys(_calCache.calendars);
+  if(!ids.length)return '未取得';
+  return ids.map((id,i)=>{
+    const c=_calCache.calendars[id];
+    const upd=new Date(c.updatedAt||_calCache.fetchedAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    return `<span style="color:${CAL_COLORS[i%CAL_COLORS.length]};font-weight:600">●</span> ${esc(c.name)}: ${c.events.length}件（${upd}更新）`;
+  }).join('<br>');
+}
 // ── 予定タブの描画
 const _DOWJP=['日','月','火','水','木','金','土'];
 function renderCalendar(){
   const con=document.getElementById('v-cal');if(!con)return;
   const nowMs=Date.now();
+  const events=_allEvents();
+  const hasManual=_calCache&&_calCache.calendars&&Object.keys(_calCache.calendars).some(k=>k.startsWith('manual:'));
+  const calCount=_calCache&&_calCache.calendars?Object.keys(_calCache.calendars).length:0;
   let html=`<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px;flex-wrap:wrap;gap:6px">
-    <p class="lbl" style="margin:0">🗓️ Outlook予定表（今日〜2週間）</p>
+    <p class="lbl" style="margin:0">🗓️ 予定表（今日〜2週間）</p>
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <label class="btn-resched" style="cursor:pointer">📂 .ics読み込み<input type="file" accept=".ics,text/calendar" style="display:none" onchange="importICSFile(this)"></label>
       <button class="btn-resched" onclick="fetchCalendarNow(true)">🔄 更新</button>
+      ${hasManual?`<button class="btn-resched" style="color:#E05A5A;border-color:#FFCDD2;background:#FFF5F5" onclick="clearManualCalendars()">🗑 手動分クリア</button>`:''}
       <a class="btn-resched" style="text-decoration:none" href="https://outlook.office.com/calendar/" target="_blank" rel="noopener">Outlookで開く ↗</a>
     </div>
   </div>
   <div id="cal-status" class="cal-status${_calStatusErr?' err':''}" style="display:${_calStatusMsg?'':'none'}">${_calStatusMsg}</div>`;
-  if(!_calCache||!_calCache.events){
+  if(!events||!events.length){
     html+=`<div style="padding:24px 10px;text-align:center;font-size:13px;color:#888;line-height:2">
       予定データがありません。<br>
       <strong>Outlook（デスクトップ版）→ ファイル → 予定表の保存</strong> で.icsファイルを保存し、<br>
-      上の「📂 .ics読み込み」ボタンから読み込んでください。
+      上の「📂 .ics読み込み」ボタンから読み込んでください。<br>
+      <span style="font-size:11px;color:#AAA">複数の.icsを読み込むと1つの予定表にまとめて表示されます（スタジオ予約＋個人予定など）</span>
     </div>`;
     con.innerHTML=html;return;
   }
-  const upd=new Date(_calCache.fetchedAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  html+=`<div style="font-size:10px;color:#AAA;margin-bottom:6px">最終更新: ${upd}（${esc(_calCache.source||'')}）</div>`;
+  html+=`<div style="font-size:10px;color:#888;margin-bottom:6px;line-height:1.8">${_calSummaryText()}</div>`;
   // 手動運用向け：データが24時間以上古い場合は注意表示
   if(nowMs-_calCache.fetchedAt>24*3600000){
     const ageH=Math.floor((nowMs-_calCache.fetchedAt)/3600000);
     const age=ageH>=48?Math.floor(ageH/24)+'日':ageH+'時間';
-    html+=`<div class="cal-status err">⏳ 予定データが${age}前のものです。Outlookから最新の.icsを保存して「📂 .ics読み込み」で更新してください。</div>`;
+    html+=`<div class="cal-status err">⏳ 予定データが${age}前のものです。最新の.icsを保存して「📂 .ics読み込み」で更新してください。</div>`;
   }
   // 日付ごとにグループ化
+  const todayStartMs=jstTodayStartMs();
   const byDay={};
-  _calCache.events.forEach(ev=>{
-    // 複数日イベントは各日に表示
-    let k=jstDateKey(ev.start);
+  events.forEach(ev=>{
+    // 複数日イベントは各日に表示（過去日はスキップし、今日以降から展開）
     const endK=jstDateKey(Math.max(ev.start,ev.end-1));
-    let ms=ev.start,g=0;
+    let ms=Math.max(ev.start,todayStartMs),k,g=0;
     do{
       k=jstDateKey(ms);
       (byDay[k]=byDay[k]||[]).push(ev);
@@ -5093,10 +5165,11 @@ function renderCalendar(){
     byDay[k].forEach(ev=>{
       const isNow=!ev.allDay&&nowMs>=ev.start&&nowMs<ev.end;
       const isPast=ev.end<=nowMs;
+      const srcBadge=calCount>1?`<span class="cal-src-badge" style="color:${CAL_COLORS[ev._ci%CAL_COLORS.length]};border-color:currentColor">${esc(ev._cal)}</span>`:'';
       html+=`<div class="cal-event${isNow?' now':''}${isPast?' past':''}">
         <span class="cal-event-time">${ev.allDay?'<span class="cal-allday-badge">終日</span>':jstHM(ev.start)+'–'+jstHM(ev.end)}</span>
         <div style="flex:1;min-width:0">
-          <div class="cal-event-title">${isNow?'▶ ':''}${esc(ev.summary)}</div>
+          <div class="cal-event-title">${isNow?'▶ ':''}${esc(ev.summary)}${srcBadge}</div>
           ${ev.location?`<div class="cal-event-loc">📍 ${esc(ev.location)}</div>`:''}
         </div>
       </div>`;
@@ -5107,20 +5180,23 @@ function renderCalendar(){
 
 // ── 今日の予定ストリップ（タスクタブ上部）
 function todayEventsStripHTML(){
-  if(!_calCache||!_calCache.events)return '';
+  const all=_allEvents();
+  if(!all)return '';
   const today=todayKey(),nowMs=Date.now();
-  const evs=_calCache.events.filter(ev=>jstDateKey(ev.start)===today||(ev.start<nowMs&&ev.end>nowMs));
+  const calCount=Object.keys(_calCache.calendars).length;
+  const evs=all.filter(ev=>jstDateKey(ev.start)===today||(ev.start<nowMs&&ev.end>nowMs));
   if(!evs.length)return '';
   const items=evs.map(ev=>{
     const isNow=!ev.allDay&&nowMs>=ev.start&&nowMs<ev.end;
     const isPast=ev.end<=nowMs;
+    const srcBadge=calCount>1?`<span class="cal-src-badge" style="color:${CAL_COLORS[ev._ci%CAL_COLORS.length]};border-color:currentColor">${esc(ev._cal)}</span>`:'';
     return `<div class="te-item" style="${isPast?'opacity:.45':''}">
       <span class="te-time">${ev.allDay?'終日':jstHM(ev.start)+'–'+jstHM(ev.end)}</span>
-      <span style="flex:1;min-width:0;${isNow?'font-weight:700;color:#0369A1':''}">${isNow?'▶ ':''}${esc(ev.summary)}</span>
+      <span style="flex:1;min-width:0;${isNow?'font-weight:700;color:#0369A1':''}">${isNow?'▶ ':''}${esc(ev.summary)}${srcBadge}</span>
     </div>`;
   }).join('');
   return `<div class="today-events-box">
-    <div class="te-title"><span>🗓️ 今日の予定（Outlook）</span>
+    <div class="te-title"><span>🗓️ 今日の予定</span>
       <button onclick="showView('cal')" style="background:none;border:none;color:#0369A1;font-size:11px;cursor:pointer;font-family:inherit;text-decoration:underline">すべて見る →</button>
     </div>${items}</div>`;
 }

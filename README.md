@@ -1,10 +1,10 @@
-# aki-Cockpit v1.0.1
+# aki-Cockpit v1.1.0
 
 タスク・スケジュール・出退勤を一元化するパーソナル「コックピット」アプリ。
 1ファイルのHTML（`index.html`）で動作し、データはブラウザのlocalStorageに保存されます。
 （旧名: Task Logger v0.6.6 からの後継。データ形式は互換で、同じブラウザなら既存データを引き継ぎます）
 
-リリース履歴は `aki-Cockpit_Release-Notes_v1.0.1.xlsx` を参照。
+リリース履歴は `aki-Cockpit_Release-Notes_v1.1.0.xlsx` を参照。
 
 ## v1.0.0 の変更点（Task Logger v0.6.6 → aki-Cockpit v1.0.0）
 
@@ -31,9 +31,13 @@
 3. アプリの「予定」タブの **「📂 .ics読み込み」** ボタンから読み込む（設定タブからも可）
 4. 予定が変わったら同じ手順で再読み込み。データが24時間以上古くなるとアプリが注意表示を出します
 
-**（参考）自動取得** — 「予定表の公開」が許可されているテナントの場合のみ:
-- Outlook on the webの **設定 → 予定表 → 共有予定表 → 予定表の公開** でICSリンクを発行し、リポジトリのSecret `OUTLOOK_ICS_URL` に登録
-- `.github/workflows/fetch-calendar.yml` の `schedule:` のコメントを外すと30分ごとの自動取得が再開します（現在は手動実行のみに停止中）
+**複数カレンダーの混在表示（v1.1.0〜）**:
+- 複数の.icsファイル（例：GMO ONAiRスタジオ予約＋Outlook個人予定）を読み込むと、1つの予定表にまとめて色分け表示されます
+- 手動読み込みはファイル名ごとに保持され、同名ファイルの再読み込みでその分だけ上書き更新されます
+
+**（参考）GitHub Actionsによる自動取得**:
+- Secret `ICS_SOURCES` に「表示名|ICSのURL」を1行1件で登録し、`.github/workflows/fetch-calendar.yml` の `schedule:` のコメントを外すと30分ごとの自動取得ができます
+- ⚠️ このリポジトリがPublicの場合、Actionsが保存する `calendar/*.ics`（予定の内容）も誰でも閲覧可能になります。社内予定を自動取得する場合は、リポジトリのPrivate化（GitHub PagesをPrivateリポジトリで使うにはGitHub Pro等の有料プランが必要）を済ませてから有効化してください
 
 ## freee勤怠打刻 連携について
 
