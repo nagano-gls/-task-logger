@@ -1,0 +1,42 @@
+# Outlook公開カレンダー(ICS)を定期取得して calendar/outlook.ics に保存するワークフロー。
+# ブラウザから直接ICSを取得するとCORSでブロックされるため、GitHub Actionsが代理取得します。
+#
+# セットアップ:
+#   リポジトリの Settings → Secrets and variables → Actions → New repository secret で
+#   名前: OUTLOOK_ICS_URL / 値: Outlookの「予定表の公開」で発行したICSリンク を登録してください。
+name: Fetch Outlook Calendar
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # 30分ごと
+  workflow_dispatch:          # 手動実行も可能
+permissions:
+  contents: write
+concurrency:
+  group: fetch-calendar
+  cancel-in-progress: true
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch ICS
+        env:
+          ICS_URL: ${{ secrets.OUTLOOK_ICS_URL }}
+        run: |
+          if [ -z "$ICS_URL" ]; then
+            echo "::warning::Secret OUTLOOK_ICS_URL が未設定です。README の手順で登録してください。"
+            exit 0
+          fi
+          mkdir -p calendar
+          curl -fsSL --retry 3 "$ICS_URL" -o calendar/outlook.ics
+      - name: Commit if changed
+        run: |
+          git config user.name  "calendar-bot"
+          git config user.email "actions@github.com"
+          git add calendar/outlook.ics || true
+          if git diff --cached --quiet; then
+            echo "変更なし"
+          else
+            git commit -m "chore: update outlook calendar [skip ci]"
+            git push
+          fi
