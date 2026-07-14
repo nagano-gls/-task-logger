@@ -10,7 +10,7 @@
 <link rel="manifest" href="manifest.webmanifest"/>
 <link rel="icon" href="favicon.ico" sizes="any"/>
 <link rel="apple-touch-icon" href="icon-192.png"/>
-<title>aki-Cockpit v2.1.0</title>
+<title>aki-Cockpit v2.2.0</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#F8F7F4;font-family:'Hiragino Sans','Noto Sans JP',sans-serif;min-height:100vh;padding-bottom:60px}
@@ -103,7 +103,10 @@ textarea.ti:focus{border-color:#5A5FBE;box-shadow:0 0 0 2px rgba(90,95,190,.12)}
 .task-row:last-child{border-bottom:none}
 .task-row.active-hl{background:#FFFBE6;border-left:3px solid #F5C842}
 .task-row.drag-over{border-top:2px solid #5A5FBE}
-.drag-handle{color:#CCC;cursor:grab;font-size:16px;padding:6px 8px;margin:-6px -8px -6px -2px;flex-shrink:0;user-select:none;touch-action:none;display:inline-flex;align-items:center;justify-content:center}
+.task-row.dragging-src{opacity:.35}
+.drop-indicator{position:fixed;height:3px;background:#5A5FBE;border-radius:2px;z-index:9998;pointer-events:none;display:none;box-shadow:0 0 0 1.5px rgba(90,95,190,.25)}
+.drop-indicator::before{content:'';position:absolute;left:-4px;top:-2.5px;width:8px;height:8px;border-radius:50%;background:#5A5FBE}
+.drag-handle{color:#CCC;cursor:grab;font-size:18px;padding:8px 10px;margin:-6px -6px -6px -4px;flex-shrink:0;user-select:none;touch-action:none;display:inline-flex;align-items:center;justify-content:center}
 .drag-handle:hover{color:#5A5FBE;background:#F0F0FA;border-radius:4px}
 .drag-handle:active{cursor:grabbing}
 /* 時刻＋所要時間（横並び） */
@@ -304,7 +307,7 @@ body{background:#F2F2F7}
 </head>
 <body>
 <div class="hdr">
-  <span class="hdr-title">タスク管理・業務記録&nbsp;&nbsp;<span class="ver" style="font-size:13px;opacity:.7;font-weight:400">aki-Cockpit v2.1.0</span></span>
+  <span class="hdr-title">タスク管理・業務記録&nbsp;&nbsp;<span class="ver" style="font-size:13px;opacity:.7;font-weight:400">aki-Cockpit v2.2.0</span></span>
   <div class="hdr-right">
     <span id="dlbl" style="font-size:11px;color:#AAA"></span>
     <button class="btn-attend" id="btn-freee" onclick="openFreee()" title="freee打刻ページを開く" style="background:#2864F0;color:#fff">🕐 打刻</button>
@@ -369,8 +372,7 @@ let placeholderEx='業界ニュースリサーチ\n朝会（10:30）\nVectorwork
 let sectionOpen={active:true,done:false,future:true,reschedule:false,omit:false};
 let activeExpd=null,memos={},aiData={},aiLoading={};
 let listening=false,listeningFor=null,recog=null;
-let taskStartTime={},reschedulePickState={},dragSrcId=null;
-let touchDragId=null,touchClone=null;
+let taskStartTime={},reschedulePickState={};
 let appMemos=[]; // アプリ修正メモ
 let _taskRecAiTool={}; // 記録展開エリアでのAI選択状態
 let _attachments={}; // {taskId: [{id,name,type,dataUrl}]}
@@ -3500,50 +3502,106 @@ function refreshExpandArea(id){
     ${tab==='memo'?memoTabHTML:recordTabHTML}`;
 }
 
-// ── Drag & Drop
-let _dragOverEl=null;
-let _dropHandled=false;
-function onDragStart(e,id){
-  dragSrcId=id;
-  _dropHandled=false;
-  e.dataTransfer.effectAllowed='move';
-  e.dataTransfer.setData('text/plain',String(id));
-}
-function onDragOver(e,id){
+// ── Drag & Drop（Pointer Events版：マウス/タッチ統一・v2.2.0）
+// ハンドル(☰)からのみドラッグ開始。挿入位置インジケーター＋画面端オートスクロール付き。
+let _drag=null;
+let _dragScrollTimer=null;
+function pointerDragStart(e,id){
+  if(e.button&&e.button!==0)return; // 主ボタン/主タッチのみ
+  const t=tasks.find(x=>x.id===id);
+  if(!t||_isTimeLocked(t))return;
+  const row=document.getElementById('trow-'+id);
+  if(!row)return;
   e.preventDefault();
-  e.stopPropagation();
-  if(_dragOverEl&&_dragOverEl!==id){
-    const prevEl=document.getElementById('trow-'+_dragOverEl);
-    if(prevEl)prevEl.classList.remove('drag-over');
+  const rect=row.getBoundingClientRect();
+  const clone=row.cloneNode(true);
+  clone.style.cssText=`position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;margin:0;z-index:9999;opacity:.95;pointer-events:none;box-shadow:0 10px 28px rgba(0,0,0,.28);border-radius:12px;background:#EEF0FF;`;
+  document.body.appendChild(clone);
+  const ind=document.createElement('div');
+  ind.className='drop-indicator';
+  document.body.appendChild(ind);
+  row.classList.add('dragging-src');
+  _drag={id,row,clone,ind,dy:e.clientY-rect.top,targetId:null,below:false,lastY:e.clientY};
+  document.addEventListener('pointermove',pointerDragMove,{passive:false});
+  document.addEventListener('pointerup',pointerDragEnd);
+  document.addEventListener('pointercancel',pointerDragEnd);
+  _dragScrollTimer=setInterval(_dragAutoScroll,16);
+}
+// 同一ステータスの移動可能な行のみを並び替え対象にする（小休憩は除外）
+function _dragRows(){
+  const src=tasks.find(t=>t.id===_drag.id);if(!src)return [];
+  return [...document.querySelectorAll('.task-row')].filter(r=>{
+    const rid=parseInt(r.id.replace('trow-',''));
+    const t=tasks.find(x=>x.id===rid);
+    return t&&t.status===src.status&&!t._autoBreak;
+  });
+}
+function _dragAutoScroll(){
+  if(!_drag)return;
+  const y=_drag.lastY,vh=window.innerHeight;
+  if(y<90) window.scrollBy(0,-Math.ceil((90-y)/6));
+  else if(y>vh-100) window.scrollBy(0,Math.ceil((y-(vh-100))/6));
+}
+function pointerDragMove(e){
+  if(!_drag)return;
+  e.preventDefault();
+  _drag.lastY=e.clientY;
+  _drag.clone.style.top=(e.clientY-_drag.dy)+'px';
+  const rows=_dragRows();
+  let target=null,below=false;
+  for(const r of rows){
+    if(r.classList.contains('dragging-src'))continue;
+    const rc=r.getBoundingClientRect();
+    if(e.clientY>=rc.top&&e.clientY<=rc.bottom){target=r;below=e.clientY>rc.top+rc.height/2;break;}
   }
-  if(_dragOverEl!==id){
-    const el=document.getElementById('trow-'+id);
-    if(el)el.classList.add('drag-over');
-    _dragOverEl=id;
+  // 最終行より下 → 末尾へ
+  if(!target&&rows.length){
+    const last=rows[rows.length-1];
+    if(!last.classList.contains('dragging-src')){
+      const rc=last.getBoundingClientRect();
+      if(e.clientY>rc.bottom){target=last;below=true;}
+    }
+  }
+  if(target){
+    const rc=target.getBoundingClientRect();
+    _drag.ind.style.display='block';
+    _drag.ind.style.left=rc.left+'px';
+    _drag.ind.style.width=rc.width+'px';
+    _drag.ind.style.top=((below?rc.bottom:rc.top)-1.5)+'px';
+    _drag.targetId=parseInt(target.id.replace('trow-',''));
+    _drag.below=below;
+  }else{
+    _drag.ind.style.display='none';
+    _drag.targetId=null;
   }
 }
-function onDragLeave(e){
-  if(e.currentTarget.contains(e.relatedTarget))return;
+function pointerDragEnd(){
+  if(!_drag)return;
+  document.removeEventListener('pointermove',pointerDragMove);
+  document.removeEventListener('pointerup',pointerDragEnd);
+  document.removeEventListener('pointercancel',pointerDragEnd);
+  clearInterval(_dragScrollTimer);_dragScrollTimer=null;
+  _drag.clone.remove();_drag.ind.remove();
+  _drag.row.classList.remove('dragging-src');
+  const srcId=_drag.id,dstId=_drag.targetId,below=_drag.below;
+  _drag=null;
+  if(dstId!=null&&srcId!==dstId) _performMoveRelative(srcId,dstId,below);
+  else renderTasks();
 }
-function _performMove(srcId, dstId){
-  if(srcId===dstId||!srcId||!dstId)return;
+// srcを、dstの直前(below=false)または直後(below=true)へ挿入
+function _performMoveRelative(srcId,dstId,below){
   const si=tasks.findIndex(t=>t.id===srcId);
-  const di=tasks.findIndex(t=>t.id===dstId);
-  if(si<0||di<0)return;
-  // 時刻指定タスク・小休憩・着手済みは移動不可
-  if(_isTimeLocked(tasks[si])){return;}
-  if(tasks[si].status!==tasks[di].status)return;
-  // ドロップ先タスクの「位置」に挿入する
-  // spliceで削除すると配列が詰まるため、下方向移動時はdiが1つズレる
-  // それを補正して「ドロップ先の直前」に確実に挿入する
+  if(si<0){renderTasks();return;}
+  if(_isTimeLocked(tasks[si])){renderTasks();return;}
+  const dstTask=tasks.find(t=>t.id===dstId);
+  if(!dstTask||dstTask.status!==tasks[si].status){renderTasks();return;}
   const moved=tasks[si];
   tasks.splice(si,1);
-  // 削除後のドロップ先の新しいインデックスを取得
-  const newDi=tasks.findIndex(t=>t.id===dstId);
-  tasks.splice(newDi,0,moved);
+  const di=tasks.findIndex(t=>t.id===dstId);
+  if(di<0){renderTasks();return;}
+  tasks.splice(below?di+1:di,0,moved);
   sv(TKEY,tasks);
-  // 小休憩の位置だけを時刻順に整える（通常タスクの並び順は保持）
-  _repositionBreaksOnly();
+  _repositionBreaksOnly(); // 小休憩だけ時刻順に整える（通常タスクの並び順は保持）
   calcScheduledTimes(_schedBase);renderTasks();
 }
 // 小休憩のみを時刻順の正しい位置に移動（通常タスクの相対順序は保持）
@@ -3552,58 +3610,12 @@ function _repositionBreaksOnly(){
   if(!breakTasks.length)return;
   const normalTasks=tasks.filter(t=>t.status==='active'&&!t._autoBreak);
   const otherTasks=tasks.filter(t=>t.status!=='active');
-  // 通常タスクの順序はそのまま維持、小休憩を時刻順にマージ
   const withTime=normalTasks.filter(t=>t._startOverride);
   const noTime=normalTasks.filter(t=>!t._startOverride);
-  // 時刻を持つ要素（通常時刻タスク+小休憩）を時刻順に
   const timed=[...withTime,...breakTasks].sort((a,b)=>_toMin(a._startOverride)-_toMin(b._startOverride));
   tasks=[...noTime,...timed,...otherTasks];
   sv(TKEY,tasks);
 }
-function onDragEnd(e){
-  document.querySelectorAll('.task-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
-  // 【フォールバック】dropイベントが発火しなかった場合に
-  // 最後にハイライトされていた要素を使って並び替えを実行
-  if(!_dropHandled && dragSrcId && _dragOverEl && dragSrcId!==_dragOverEl){
-    _performMove(dragSrcId, _dragOverEl);
-  }
-  dragSrcId=null;_dragOverEl=null;_dropHandled=false;
-}
-function onDrop(e,id){
-  e.preventDefault();
-  e.stopPropagation();
-  _dropHandled=true;
-  document.querySelectorAll('.task-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
-  const srcId=dragSrcId;
-  _dragOverEl=null;dragSrcId=null;
-  _performMove(srcId, id);
-}
-function onTouchStart(e,id){
-  touchDragId=id;const row=document.getElementById('trow-'+id);
-  const clone=row.cloneNode(true);
-  clone.style.cssText='position:fixed;opacity:.8;pointer-events:none;z-index:999;width:'+row.offsetWidth+'px;background:#EEF0FF;border-radius:8px;';
-  document.body.appendChild(clone);touchClone=clone;moveTouchClone(e.touches[0]);
-}
-function onTouchMove(e){
-  if(!touchClone)return;e.preventDefault();moveTouchClone(e.touches[0]);
-  const els=document.elementsFromPoint(e.touches[0].clientX,e.touches[0].clientY);
-  const row=els.find(el=>el.classList.contains('task-row')&&el.id!==('trow-'+touchDragId));
-  document.querySelectorAll('.task-row').forEach(r=>r.classList.remove('drag-over'));
-  if(row)row.classList.add('drag-over');
-}
-function onTouchEnd(e){
-  document.querySelectorAll('.task-row').forEach(r=>r.classList.remove('drag-over'));
-  if(touchClone){touchClone.remove();touchClone=null;}
-  if(!touchDragId)return;
-  const t=e.changedTouches[0];
-  const els=document.elementsFromPoint(t.clientX,t.clientY);
-  const row=els.find(el=>el.classList.contains('task-row')&&el.id!==('trow-'+touchDragId));
-  if(row){const dstId=parseInt(row.id.replace('trow-',''));const si=tasks.findIndex(x=>x.id===touchDragId);const di=tasks.findIndex(x=>x.id===dstId);if(si>=0&&di>=0){const[m]=tasks.splice(si,1);tasks.splice(di,0,m);sv(TKEY,tasks);reinsertBreaks();}}
-  touchDragId=null;renderTasks();
-}
-function moveTouchClone(touch){if(!touchClone)return;touchClone.style.left=(touch.clientX-40)+'px';touchClone.style.top=(touch.clientY-20)+'px';}
-document.addEventListener('touchmove',onTouchMove,{passive:false});
-document.addEventListener('touchend',onTouchEnd);
 
 // ── タスク行HTML
 function taskRowHTML(t,sectionKey){
@@ -3683,18 +3695,9 @@ function taskRowHTML(t,sectionKey){
   `;
 
   return `
-    <div class="task-row${hlClass}${t.parallel?' parallel':''}${(()=>{if(!isActive||!t.scheduledStart||!attend.plannedOutTime)return '';const[sh,sm]=t.scheduledStart.split(':').map(Number);const[oh,om]=attend.plannedOutTime.split(':').map(Number);return (sh*60+sm>=oh*60+om)?' over-planned':'';})()}" id="trow-${t.id}"
-      draggable="${(isActive||t._interrupted)&&!t._hasFixedTime&&!t._autoBreak?'true':'false'}"
-      ondragstart="onDragStart(event,${t.id})"
-      ondragover="onDragOver(event,${t.id})"
-      ondragleave="onDragLeave(event)"
-      ondragend="onDragEnd(event)"
-      ondrop="onDrop(event,${t.id})">
-      <span class="drag-handle" style="${isActive?'':'visibility:hidden'}"
-        draggable="${isActive&&!t._hasFixedTime&&!t._autoBreak?'true':'false'}"
-        ondragstart="onDragStart(event,${t.id})"
-        ondragend="onDragEnd(event)"
-        ontouchstart="${isActive?'onTouchStart(event,'+t.id+')':''}">☰</span>
+    <div class="task-row${hlClass}${t.parallel?' parallel':''}${(()=>{if(!isActive||!t.scheduledStart||!attend.plannedOutTime)return '';const[sh,sm]=t.scheduledStart.split(':').map(Number);const[oh,om]=attend.plannedOutTime.split(':').map(Number);return (sh*60+sm>=oh*60+om)?' over-planned':'';})()}" id="trow-${t.id}">
+      ${(()=>{const canDrag=isActive&&!_isTimeLocked(t);return `<span class="drag-handle" style="${isActive?'':'visibility:hidden'}${canDrag?'':';opacity:.3;cursor:not-allowed'}"
+        ${canDrag?`onpointerdown="pointerDragStart(event,${t.id})"`:''} title="${canDrag?'ドラッグで並び替え':'時刻指定・着手済みは移動できません'}">☰</span>`;})()}
       ${timeHTML}
       <div class="task-name${t.started?' hl':''}" onclick="${isOmit?'':`startInlineEdit(${t.id},this)`}" title="${isOmit?'':`クリックして編集`}">${esc(t.name)}${isOmit&&t.omitReason?`<div style="font-size:11px;color:#AAA;margin-top:2px;font-weight:normal;">${esc(t.omitReason)}</div>`:''}${t.parallel?'<span class="parallel-badge" style="margin-left:5px">並走</span>':''}${t._interrupted?'<span class="interrupted-badge">中断中</span>':''}${dueBadgeHTML(t)}${rc>0?`<span style="font-size:9px;color:#5A5FBE;margin-left:4px">${rc}回</span>`:''}</div>
       <div class="task-actions">${actionBtns}</div>
@@ -4280,7 +4283,7 @@ function toggleGroupVoice(gi){
 // ── データのエクスポート/インポート（全データをJSON1ファイルで）
 function exportAllData(silent){
   const allData={
-    version:'v2.1.0',
+    version:'v2.2.0',
     exportedAt:getJST(),
     tasks:ld(TKEY,[]),
     records:ld(RKEY,{}),
