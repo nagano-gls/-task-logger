@@ -1,5 +1,5 @@
 // aki-Cockpit PWA Service Worker — ネットワーク優先＋キャッシュフォールバック
-const CACHE = 'aki-cockpit-v3.2.0';
+const CACHE = 'aki-cockpit-v3.2.1';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './favicon.ico', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

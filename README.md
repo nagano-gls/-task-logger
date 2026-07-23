@@ -1,8 +1,8 @@
-# aki-Cockpit v3.2.0
+# aki-Cockpit v3.2.1
 
 タスク・スケジュール・出退勤を一元化するパーソナル「コックピット」アプリ。
 1ファイルのHTML（`index.html`）で動作し、**すべてのデータはブラウザ内（localStorage）にのみ保存されます**。
-リリース履歴は `aki-Cockpit_Release-Notes_v3.2.0.xlsx` を参照。
+リリース履歴は `aki-Cockpit_Release-Notes_v3.2.1.xlsx` を参照。
 
 ## データ非公開ポリシー（v2.0.0〜）
 
@@ -42,5 +42,5 @@ index.html                             アプリ本体（1ファイル完結）
 manifest.webmanifest                   PWAマニフェスト
 sw.js                                  Service Worker（オフラインキャッシュ）
 icon-192.png / icon-512.png            アプリアイコン
-aki-Cockpit_Release-Notes_v3.2.0.xlsx  リリースノート（全履歴）
+aki-Cockpit_Release-Notes_v3.2.1.xlsx  リリースノート（全履歴）
 ```
